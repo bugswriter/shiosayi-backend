@@ -48,9 +48,9 @@ if __name__ == '__main__':
     # When running locally, Flask defaults to http://127.0.0.1:5000/
     # For Ko-fi to reach this, you'll need a public URL.
     # Tools like ngrok (https://ngrok.com/) can expose your local server to the internet.
-    # Example: ngrok http 5000
+    # Example: ngrok http 7070
     print("Flask server starting...")
-    print("Listening on http://127.0.0.1:5000/")
+    print("Listening on http://127.0.0.1:7070/")
     print("Webhook endpoint: /webhook")
     print(f"Ko-fi Verification Token: {KOFI_VERIFICATION_TOKEN}")
-    app.run(debug=True) # debug=True allows for automatic reloading on code changes
+    app.run(host='127.0.0.1', port=7070) # debug=True allows for automatic reloading on code changes
