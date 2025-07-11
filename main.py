@@ -19,7 +19,10 @@ def kofi_webhook():
 
     if data is None:
         raw_data = request.get_data(as_text=True)
-        print(f"ERROR: Webhook received non-JSON or unparseable data. Raw data: {raw_data[:200]}...")
+        content_type = request.headers.get('Content-Type')
+        print(f"ERROR: Webhook received non-JSON or unparseable data.")
+        print(f"Content-Type: {content_type}")
+        print(f"Raw data received: '{raw_data}'") # Print the full raw data
         return jsonify({"status": "error", "message": "Request body is not valid JSON or is empty"}), 400
 
     received_token = data.get('verification_token')
