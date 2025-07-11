@@ -1,10 +1,22 @@
+import os
 from flask import Flask, request, jsonify
+from flask_cors import CORS # Import CORS
+from dotenv import load_dotenv # Import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
+CORS(app) # Enable CORS for all routes
 
-# Replace with your actual Ko-fi verification token
-# This token is used to ensure the request is coming from Ko-fi
-KOFI_VERIFICATION_TOKEN = "e58df006-d830-4114-96e9-6bbbfcb2b776" # This is from your example image
+# Get Ko-fi verification token from environment variables
+# It's crucial to verify the 'verification_token' to ensure the request
+# is legitimate and coming from Ko-fi.
+KOFI_VERIFICATION_TOKEN = os.getenv("KOFI_VERIFICATION_TOKEN")
+
+# Basic check to ensure the token is loaded
+if not KOFI_VERIFICATION_TOKEN:
+    print("WARNING: KOFI_VERIFICATION_TOKEN not set in environment variables. Webhook verification will fail.")
 
 @app.route('/webhook', methods=['POST'])
 def kofi_webhook():
@@ -15,8 +27,6 @@ def kofi_webhook():
         data = request.get_json()
 
         # --- Security Check: Verify the Ko-fi token ---
-        # It's crucial to verify the 'verification_token' to ensure the request
-        # is legitimate and coming from Ko-fi.
         received_token = data.get('verification_token')
         if received_token != KOFI_VERIFICATION_TOKEN:
             print(f"ERROR: Invalid verification token received: {received_token}")
@@ -52,5 +62,6 @@ if __name__ == '__main__':
     print("Flask server starting...")
     print("Listening on http://127.0.0.1:7070/")
     print("Webhook endpoint: /webhook")
-    print(f"Ko-fi Verification Token: {KOFI_VERIFICATION_TOKEN}")
-    app.run(host='127.0.0.1', port=7070) # debug=True allows for automatic reloading on code changes
+    print(f"Ko-fi Verification Token (from .env): {KOFI_VERIFICATION_TOKEN}")
+    app.run(host='127.0.0.1', port=7070, debug=True) # debug=True allows for automatic reloading on code changes
+
