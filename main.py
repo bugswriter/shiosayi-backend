@@ -3,6 +3,7 @@ import json
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+from urllib.parse import parse_qs # Import parse_qs
 
 load_dotenv()
 
@@ -23,16 +24,25 @@ def kofi_webhook():
         # Try to parse as direct JSON
         data = request.get_json(silent=True)
     elif 'application/x-www-form-urlencoded' in content_type:
-        # If it's form-urlencoded, the JSON might be in a 'data' field
-        raw_form_data = request.form.get('data')
-        if raw_form_data:
+        # Ko-fi sends JSON as a URL-encoded 'data' parameter
+        raw_body = request.get_data(as_text=True)
+        if raw_body.startswith('data='):
             try:
-                data = json.loads(raw_form_data)
-                print("INFO: Successfully parsed JSON from 'data' form field.")
+                # Parse the raw body as a query string to extract the 'data' parameter
+                parsed_qs = parse_qs(raw_body)
+                raw_json_string = parsed_qs.get('data', [''])[0] # Get the first value of 'data'
+
+                if raw_json_string:
+                    data = json.loads(raw_json_string)
+                    print("INFO: Successfully parsed JSON from 'data' form field via parse_qs.")
+                else:
+                    print("ERROR: Form-urlencoded request received, 'data' field is empty after parsing.")
             except json.JSONDecodeError as e:
-                print(f"ERROR: Failed to decode JSON from 'data' form field: {e}")
+                print(f"ERROR: Failed to decode JSON from 'data' form field (parse_qs): {e}")
+            except Exception as e:
+                print(f"ERROR: Unexpected error processing form-urlencoded data: {e}")
         else:
-            print("ERROR: Form-urlencoded request received, but 'data' field is missing or empty.")
+            print("ERROR: Form-urlencoded request received, but body does not start with 'data='.")
     else:
         # Fallback for other content types or if it's empty
         raw_data = request.get_data(as_text=True)
@@ -47,10 +57,10 @@ def kofi_webhook():
 
 
     if data is None:
-        raw_data_fallback = request.get_data(as_text=True) # Get raw data again for final error message
+        final_raw_data = request.get_data(as_text=True) # Get raw data again for final error message
         print(f"ERROR: Webhook received non-JSON or unparseable data.")
         print(f"Final Content-Type: {content_type}")
-        print(f"Final Raw data received: '{raw_data_fallback}'")
+        print(f"Final Raw data received: '{final_raw_data}'")
         return jsonify({"status": "error", "message": "Request body is not valid JSON or is empty"}), 400
 
     received_token = data.get('verification_token')
@@ -77,4 +87,3 @@ if __name__ == '__main__':
     print("Webhook endpoint: /webhook")
     print(f"Ko-fi Verification Token (from .env): {KOFI_VERIFICATION_TOKEN}")
     app.run(host='127.0.0.1', port=5050, debug=True)
-
