@@ -1,7 +1,8 @@
 # app.py
+
 import os
 import logging
-# Make sure send_from_directory and current_app are imported from flask
+import json  # <-- Import the json library
 from flask import Flask, request, jsonify, abort, send_from_directory, current_app
 from dotenv import load_dotenv
 
@@ -25,59 +26,83 @@ database.init_app(app)
 
 # Load secrets from environment
 KOFI_TOKEN = os.getenv("KOFI_VERIFICATION_TOKEN")
-ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN") # Load Admin token
+ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
 
-# --- All your routes below this line are unchanged, I'm just showing the import fix ---
 
-@app.route('/health')
-def health_check():
-    """A simple health check endpoint that the test script can hit."""
-    return jsonify({"status": "ok"}), 200
+# ====================================================================
+# API ROUTES
+# ====================================================================
 
-@app.route('/admin/publish', methods=['POST'])
-def publish_database():
+@app.route('/webhook', methods=['POST'])
+def kofi_webhook():
     """
-    Protected route to generate and publish the sanitized public database.
-    Requires admin token in the 'Authorization' header.
-    e.g., Authorization: Bearer shio_admin_...
+    Handles incoming webhooks from Ko-fi, which send data as a URL-encoded form.
+    The form contains a single 'data' field with a JSON string as its value.
     """
-    auth_header = request.headers.get('Authorization')
-    if not auth_header or not auth_header.startswith('Bearer '):
-        return jsonify({"error": "Authorization header is missing or malformed."}), 401
-        
-    token = auth_header.split(' ')[1]
-    if not ADMIN_API_TOKEN or token != ADMIN_API_TOKEN:
-        return jsonify({"error": "Invalid or missing admin token."}), 403
+    # 1. Check for the 'data' field in the form payload
+    if 'data' not in request.form:
+        logging.error("Webhook received with no 'data' field in form.")
+        return jsonify({"error": "Malformed request, missing 'data' form field."}), 400
 
-    # This line will now work because 'current_app' is imported
-    main_db_path = current_app.config['DATABASE']
-    result = services.generate_public_database(main_db_path, "public.db")
+    # 2. Extract the JSON string from the form data
+    json_string = request.form['data']
 
-    if result['status'] == 'success':
-        return jsonify(result), 200
-    else:
-        return jsonify(result), 500
-
-
-@app.route('/db/public')
-def download_public_db():
-    """
-    Publicly accessible route to download the latest generated public database.
-    """
-    directory = os.path.dirname(os.path.abspath(__file__))
-    filename = "public.db"
-    
+    # 3. Parse the JSON string into a Python dictionary
     try:
-        return send_from_directory(directory, filename, as_attachment=True)
-    except FileNotFoundError:
-        return jsonify({"error": "Public database file not found. Please run the publish process first."}), 404
+        data = json.loads(json_string)
+    except json.JSONDecodeError:
+        logging.error(f"Webhook received with invalid JSON in 'data' field: {json_string}")
+        return jsonify({"error": "Invalid JSON format in 'data' field."}), 400
+
+    # 4. Verify the request is from Ko-fi (using the parsed data)
+    if data.get("verification_token") != KOFI_TOKEN:
+        logging.warning(f"Webhook received with invalid verification token. Got: {data.get('verification_token')}")
+        abort(403)  # Forbidden
+
+    # 5. Log every event for auditing
+    services.log_kofi_event(data)
+
+    # 6. Process only new subscriptions
+    if (data.get("type") == "Subscription" and
+        data.get("is_first_subscription_payment") is True):
+
+        logging.info(f"Processing new subscription for {data.get('email')}")
+        services.process_new_subscription(data)
+    else:
+        logging.info(f"Ignoring Ko-fi event of type '{data.get('type')}' for email {data.get('email')}")
+
+    return jsonify({"message": "Webhook received successfully."}), 200
+
+
+@app.route('/suggest', methods=['POST'])
+def create_suggestion():
+    """
+    Public endpoint for users to suggest a new film.
+    """
+    if not request.is_json:
+        return jsonify({"error": "Request body must be JSON."}), 415
+
+    data = request.get_json()
+    email = data.get('email')
+    title = data.get('title')
+
+    if not email or not title:
+        return jsonify({"error": "The 'email' and 'title' fields are required."}), 400
+    
+    notes = data.get('notes')
+
+    try:
+        new_suggestion = services.add_suggestion(email, title, notes)
+        return jsonify({"message": "Suggestion received successfully.", "suggestion": new_suggestion}), 201
+    except Exception as e:
+        logging.error(f"Could not add suggestion: {e}")
+        return jsonify({"error": "An internal error occurred."}), 500
 
 
 @app.route('/auth')
 def authenticate_guardian():
     """
     Validates a token and returns the guardian's profile and adopted films.
-    e.g., /auth?token=shio_xxxxxxxx
     """
     token = request.args.get('token')
     if not token:
@@ -91,41 +116,10 @@ def authenticate_guardian():
     return jsonify(guardian_details), 200
 
 
-@app.route('/webhook', methods=['POST'])
-def kofi_webhook():
-    """
-    Handles incoming webhooks from Ko-fi.
-    """
-    if not request.is_json:
-        return jsonify({"error": "Unsupported Media Type, expecting application/json"}), 415
-
-    data = request.get_json()
-
-    # 1. Verify the request is from Ko-fi
-    if data.get("verification_token") != KOFI_TOKEN:
-        logging.warning("Webhook received with invalid verification token.")
-        abort(403) # Forbidden
-
-    # 2. Log every event for auditing
-    services.log_kofi_event(data)
-
-    # 3. Process only new subscriptions
-    if (data.get("type") == "Subscription" and 
-        data.get("is_first_subscription_payment") is True):
-        
-        logging.info(f"Processing new subscription for {data.get('email')}")
-        services.process_new_subscription(data)
-    else:
-        logging.info(f"Ignoring Ko-fi event of type '{data.get('type')}'")
-
-    return jsonify({"message": "Webhook received successfully."}), 200
-
-
 @app.route('/magnet/<int:film_id>')
 def get_magnet(film_id):
     """
     Provides the magnet link for a film if the user provides a valid token.
-    e.g., /magnet/1?TOKEN=shio_xxxxxxxx
     """
     token = request.args.get('TOKEN')
     if not token:
@@ -146,7 +140,6 @@ def get_magnet(film_id):
 def adopt_film_route(film_id):
     """
     Allows a guardian to adopt a film.
-    e.g., POST /adopt/1?TOKEN=shio_xxxxxxxx
     """
     token = request.args.get('TOKEN')
     if not token:
@@ -156,40 +149,53 @@ def adopt_film_route(film_id):
     if not guardian:
         return jsonify({"error": "Invalid API token."}), 401
 
-    # The service function returns a tuple: (response_dict, status_code)
     response_data, status_code = services.adopt_film(guardian, film_id)
-
     return jsonify(response_data), status_code
 
 
-@app.route('/suggest', methods=['POST'])
-def create_suggestion():
+@app.route('/db/public')
+def download_public_db():
     """
-    Public endpoint for users to suggest a new film.
-    Accepts a JSON payload.
+    Publicly accessible route to download the latest generated public database.
     """
-    if not request.is_json:
-        return jsonify({"error": "Request body must be JSON."}), 415
-
-    data = request.get_json()
-    email = data.get('email')
-    title = data.get('title')
-
-    # Basic validation
-    if not email or not title:
-        return jsonify({"error": "The 'email' and 'title' fields are required."}), 400
+    directory = os.path.dirname(os.path.abspath(__file__))
+    filename = "public.db"
     
-    notes = data.get('notes') # This is optional
-
     try:
-        new_suggestion = services.add_suggestion(email, title, notes)
-        return jsonify({
-            "message": "Suggestion received successfully.",
-            "suggestion": new_suggestion
-        }), 201 # 201 Created is the appropriate status code
-    except Exception as e:
-        logging.error(f"Could not add suggestion: {e}")
-        return jsonify({"error": "An internal error occurred."}), 500
+        return send_from_directory(directory, filename, as_attachment=True)
+    except FileNotFoundError:
+        return jsonify({"error": "Public database file not found. Please run the publish process first."}), 404
+
+
+@app.route('/admin/publish', methods=['POST'])
+def publish_database():
+    """
+    Protected route to generate and publish the sanitized public database.
+    """
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({"error": "Authorization header is missing or malformed."}), 401
+        
+    token = auth_header.split(' ')[1]
+    if not ADMIN_API_TOKEN or token != ADMIN_API_TOKEN:
+        return jsonify({"error": "Invalid or missing admin token."}), 403
+
+    main_db_path = current_app.config['DATABASE']
+    result = services.generate_public_database(main_db_path, "public.db")
+
+    if result['status'] == 'success':
+        return jsonify(result), 200
+    else:
+        return jsonify(result), 500
+
+
+@app.route('/health')
+def health_check():
+    """
+    A simple health check endpoint that the test script can hit.
+    """
+    return jsonify({"status": "ok"}), 200
+
 
 if __name__ == '__main__':
     app.run(debug=False, port=5050)
