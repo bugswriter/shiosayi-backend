@@ -35,43 +35,43 @@ ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
 
 @app.route('/webhook', methods=['POST'])
 def kofi_webhook():
-    """
-    Handles incoming webhooks from Ko-fi, which send data as a URL-encoded form.
-    The form contains a single 'data' field with a JSON string as its value.
-    """
-    # 1. Check for the 'data' field in the form payload
+    """Handles all Ko-fi webhooks."""
     if 'data' not in request.form:
-        logging.error("Webhook received with no 'data' field in form.")
         return jsonify({"error": "Malformed request, missing 'data' form field."}), 400
 
-    # 2. Extract the JSON string from the form data
-    json_string = request.form['data']
-
-    # 3. Parse the JSON string into a Python dictionary
     try:
-        data = json.loads(json_string)
+        data = json.loads(request.form['data'])
     except json.JSONDecodeError:
-        logging.error(f"Webhook received with invalid JSON in 'data' field: {json_string}")
         return jsonify({"error": "Invalid JSON format in 'data' field."}), 400
 
-    # 4. Verify the request is from Ko-fi (using the parsed data)
     if data.get("verification_token") != KOFI_TOKEN:
-        logging.warning(f"Webhook received with invalid verification token. Got: {data.get('verification_token')}")
-        abort(403)  # Forbidden
-
-    # 5. Log every event for auditing
+        abort(403)
+        
     services.log_kofi_event(data)
 
-    # 6. Process only new subscriptions
-    if (data.get("type") == "Subscription" and
-        data.get("is_first_subscription_payment") is True):
-
-        logging.info(f"Processing new subscription for {data.get('email')}")
-        services.process_new_subscription(data)
+    # --- SIMPLIFIED AND CORRECTED LOGIC ---
+    if data.get("type") == "Subscription" and data.get("is_subscription_payment") is True:
+        logging.info(f"Processing subscription payment for {data.get('email')}")
+        services.process_subscription_payment(data)
     else:
-        logging.info(f"Ignoring Ko-fi event of type '{data.get('type')}' for email {data.get('email')}")
+        logging.info(f"Ignoring non-subscription Ko-fi event of type '{data.get('type')}'")
 
     return jsonify({"message": "Webhook received successfully."}), 200
+
+
+@app.route('/admin/housekeeping', methods=['POST'])
+def housekeeping_route():
+    """Protected admin route to clean up lapsed subscriptions."""
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({"error": "Authorization header is missing or malformed."}), 401
+    
+    token = auth_header.split(' ')[1]
+    if not ADMIN_API_TOKEN or token != ADMIN_API_TOKEN:
+        return jsonify({"error": "Invalid or missing admin token."}), 403
+
+    result = services.perform_housekeeping()
+    return jsonify(result), 200
 
 
 @app.route('/suggest', methods=['POST'])

@@ -1,30 +1,156 @@
-# services.py
+# services.py (Complete File)
 
 import os
 import logging
 import sqlite3
-from datetime import datetime
+import csv
+from datetime import datetime, timedelta # Important: import timedelta
 
 from database import get_db
 from utils import generate_api_token, generate_guardian_id
 from mail import EmailService
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Tier definitions for adoption limits
-TIER_LIMITS = {
-    'lover': 1,
-    'keeper': 5,
-    'savior': 10
-}
+TIER_LIMITS = {'lover': 1, 'keeper': 5, 'savior': 10}
+TIER_MAP = {"lover": "lover", "keeper": "keeper", "savior": "savior"}
 
-# Tier definitions for adoption limits
-TIER_MAP = {
-    "lover": "lover",
-    "keeper": "keeper",
-    "savior": "savior"
-}
+
+def process_subscription_payment(payload):
+    """
+    Handles ANY subscription payment. This is the main entry point for webhooks.
+    - Updates an existing guardian's payment date and handles tier upgrades.
+    - Creates a new guardian if they don't exist.
+    """
+    email = payload.get('email')
+    if not email:
+        logging.warning("Subscription payment received with no email. Ignoring.")
+        return
+
+    db = get_db()
+    cursor = db.execute("SELECT id, tier, token FROM guardians WHERE email = ?", (email,))
+    guardian = cursor.fetchone()
+    
+    email_service = EmailService()
+    new_tier_name_from_kofi = payload.get('tier_name', 'lover').lower()
+    app_tier = TIER_MAP.get(new_tier_name_from_kofi, 'lover')
+
+    if guardian:
+        # --- SCENARIO: EXISTING GUARDIAN (RENEWAL OR UPGRADE) ---
+        current_tier = guardian['tier']
+        guardian_id = guardian['id']
+        guardian_token = guardian['token']
+        
+        # Update their payment date and tier (in case it changed)
+        db.execute(
+            "UPDATE guardians SET last_paid_at = ?, tier = ? WHERE id = ?",
+            (datetime.now(), app_tier, guardian_id)
+        )
+        db.commit()
+
+        # Check for an upgrade
+        if app_tier != current_tier:
+            logging.info(f"Guardian {guardian_id} ({email}) upgraded from '{current_tier}' to '{app_tier}'.")
+            email_service.send_email(
+                to_email=email,
+                subject="Your Shiosayi Tier has been Upgraded!",
+                template_name="guardian_welcome_email",
+                template_data={
+                    "title": f"Congratulations! You're now a {app_tier.capitalize()} Guardian!",
+                    "user_name": payload.get('from_name'),
+                    "tier_name": app_tier,
+                    "api_key": guardian_token # Send their EXISTING token
+                }
+            )
+        else:
+            logging.info(f"Processed renewal for existing guardian {guardian_id} ({email}).")
+            
+    else:
+        # --- SCENARIO: NEW GUARDIAN ---
+        logging.info(f"Subscription from a new email ({email}). Creating new guardian.")
+        _create_new_guardian(payload, app_tier, email_service)
+
+
+def _create_new_guardian(payload, app_tier, email_service):
+    """Internal function to create a new guardian and send the welcome email."""
+    db = get_db()
+    email = payload['email']
+    new_id = generate_guardian_id(db)
+    new_token = generate_api_token()
+    
+    guardian_data = {
+        'id': new_id, 'name': payload.get('from_name'), 'email': email, 'tier': app_tier,
+        'token': new_token, 'joined_at': datetime.now(), 'last_paid_at': datetime.now()
+    }
+
+    db.execute(
+        """
+        INSERT INTO guardians (id, name, email, tier, token, joined_at, last_paid_at)
+        VALUES (:id, :name, :email, :tier, :token, :joined_at, :last_paid_at)
+        """,
+        guardian_data
+    )
+    db.commit()
+    logging.info(f"Created new guardian: {new_id} ({email}) with tier '{app_tier}'")
+
+    # Send the welcome email
+    email_service.send_email(
+        to_email=email,
+        subject="Welcome to the Shiosayi Community!",
+        template_name="guardian_welcome_email",
+        template_data={
+            "user_name": guardian_data['name'],
+            "tier_name": app_tier,
+            "api_key": new_token # Send the NEWLY created token
+        }
+    )
+
+
+def perform_housekeeping(days_lapsed=35, archive_file="ex_guardians.csv"):
+    """
+    Finds guardians whose subscriptions have lapsed and cleans them up.
+    This is the definitive way to handle cancellations.
+    """
+    db = get_db()
+    cutoff_date = datetime.now() - timedelta(days=days_lapsed)
+    logging.info(f"Housekeeping: Checking for guardians with no payment since {cutoff_date.strftime('%Y-%m-%d')}.")
+
+    cursor = db.execute("SELECT * FROM guardians WHERE last_paid_at < ?", (cutoff_date,))
+    lapsed_guardians = cursor.fetchall()
+
+    if not lapsed_guardians:
+        logging.info("Housekeeping: No lapsed guardians found.")
+        return {"message": "No lapsed guardians to process."}
+
+    logging.info(f"Housekeeping: Found {len(lapsed_guardians)} lapsed guardians to process.")
+    
+    archived_count, films_abandoned_count = 0, 0
+    
+    file_exists = os.path.isfile(archive_file)
+    with open(archive_file, 'a', newline='') as csvfile:
+        fieldnames = lapsed_guardians[0].keys()
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        if not file_exists: writer.writeheader()
+        
+        for guardian in lapsed_guardians:
+            writer.writerow(dict(guardian))
+            archived_count += 1
+            
+            update_cursor = db.execute(
+                "UPDATE films SET status = 'abandoned', guardian_id = NULL WHERE guardian_id = ?", (guardian['id'],)
+            )
+            films_abandoned_count += update_cursor.rowcount
+
+            db.execute("DELETE FROM guardians WHERE id = ?", (guardian['id'],))
+    
+    db.commit()
+    logging.info(f"Housekeeping complete. Archived: {archived_count}, Films abandoned: {films_abandoned_count}.")
+    
+    return {
+        "message": "Housekeeping process completed successfully.",
+        "archived_guardians": archived_count, "films_abandoned": films_abandoned_count
+    }
+
 
 def log_kofi_event(payload):
     """Logs the raw Ko-fi event to the database for auditing."""

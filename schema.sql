@@ -7,7 +7,8 @@ CREATE TABLE guardians (
     email TEXT UNIQUE NOT NULL,         -- for contact + matching
     tier TEXT NOT NULL,                 -- lover, keeper, savior
     token TEXT UNIQUE NOT NULL,         -- access token / API key
-    joined_at DATETIME NOT NULL         -- date of registration
+    joined_at DATETIME NOT NULL,        -- date of registration
+    last_paid_at DATETIME               -- date of last subscription payment
 );
 
 -- =============================
