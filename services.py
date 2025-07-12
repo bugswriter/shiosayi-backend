@@ -13,20 +13,11 @@ from mail import EmailService
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Tier definitions for adoption limits
-TIER_LIMITS = {
-    'lover': 1,
-    'keeper': 5,
-    'savior': 10
-}
-
-# Mapping from Ko-fi's tier names to our internal tier names
 TIER_MAP = {
-    "Lover Tier": "lover",
-    "Keeper Tier": "keeper",
-    "Savior Tier": "savior"
-    # Add other Ko-fi tier names as needed
+    "lover": "lover",
+    "keeper": "keeper",
+    "savior": "savior"
 }
-
 
 def log_kofi_event(payload):
     """Logs the raw Ko-fi event to the database for auditing."""
