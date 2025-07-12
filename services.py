@@ -1,10 +1,9 @@
-# services.py (Complete File)
-
+# services.py
 import os
 import logging
 import sqlite3
 import csv
-from datetime import datetime, timedelta # Important: import timedelta
+from datetime import datetime, timedelta
 
 from database import get_db
 from utils import generate_api_token, generate_guardian_id
@@ -15,94 +14,99 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 TIER_LIMITS = {'lover': 1, 'keeper': 5, 'savior': 10}
 TIER_MAP = {"lover": "lover", "keeper": "keeper", "savior": "savior"}
 
+def log_kofi_event(payload):
+    """
+    Logs the raw Ko-fi event to the database.
+    Uses INSERT OR IGNORE to safely handle webhook retries.
+    """
+    db = get_db()
+    # FIX: Use INSERT OR IGNORE to prevent UNIQUE constraint errors on retry
+    db.execute(
+        """
+        INSERT OR IGNORE INTO kofi_events (id, timestamp, type, is_public, from_name, email, message,
+        amount, currency, url, is_subscription_payment, is_first_subscription_payment,
+        tier_name, kofi_transaction_id, raw_payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            payload['message_id'], payload['timestamp'], payload['type'],
+            payload.get('is_public'), payload.get('from_name'), payload['email'],
+            payload.get('message'), float(payload['amount']), payload.get('currency'),
+            payload.get('url'), payload.get('is_subscription_payment'),
+            payload.get('is_first_subscription_payment'), payload.get('tier_name'),
+            payload.get('kofi_transaction_id'), str(payload)
+        )
+    )
+    db.commit()
+    logging.info(f"Logged (or ignored duplicate) Ko-fi event: {payload['message_id']}")
+
 
 def process_subscription_payment(payload):
     """
-    Handles ANY subscription payment. This is the main entry point for webhooks.
+    Handles a confirmed MEMBERSHIP payment.
     - Updates an existing guardian's payment date and handles tier upgrades.
     - Creates a new guardian if they don't exist.
     """
     email = payload.get('email')
-    if not email:
-        logging.warning("Subscription payment received with no email. Ignoring.")
-        return
-
     db = get_db()
     cursor = db.execute("SELECT id, tier, token FROM guardians WHERE email = ?", (email,))
     guardian = cursor.fetchone()
     
     email_service = EmailService()
-    new_tier_name_from_kofi = payload.get('tier_name', 'lover').lower()
-    app_tier = TIER_MAP.get(new_tier_name_from_kofi, 'lover')
+    
+    # FIX: Safely handle the tier_name, even though app.py filters for None
+    kofi_tier_name = payload.get('tier_name')
+    if kofi_tier_name:
+        kofi_tier_name = kofi_tier_name.lower()
+    app_tier = TIER_MAP.get(kofi_tier_name, 'lover')
 
     if guardian:
-        # --- SCENARIO: EXISTING GUARDIAN (RENEWAL OR UPGRADE) ---
-        current_tier = guardian['tier']
-        guardian_id = guardian['id']
-        guardian_token = guardian['token']
-        
-        # Update their payment date and tier (in case it changed)
-        db.execute(
-            "UPDATE guardians SET last_paid_at = ?, tier = ? WHERE id = ?",
-            (datetime.now(), app_tier, guardian_id)
-        )
+        # --- EXISTING GUARDIAN (RENEWAL OR UPGRADE) ---
+        current_tier, guardian_id, guardian_token = guardian['tier'], guardian['id'], guardian['token']
+        db.execute("UPDATE guardians SET last_paid_at = ?, tier = ? WHERE id = ?", (datetime.now(), app_tier, guardian_id))
         db.commit()
 
-        # Check for an upgrade
         if app_tier != current_tier:
-            logging.info(f"Guardian {guardian_id} ({email}) upgraded from '{current_tier}' to '{app_tier}'.")
+            logging.info(f"Guardian {guardian_id} upgraded from '{current_tier}' to '{app_tier}'.")
             email_service.send_email(
-                to_email=email,
-                subject="Your Shiosayi Tier has been Upgraded!",
+                to_email=email, subject="Your Shiosayi Tier has been Upgraded!",
                 template_name="guardian_welcome_email",
                 template_data={
                     "title": f"Congratulations! You're now a {app_tier.capitalize()} Guardian!",
-                    "user_name": payload.get('from_name'),
-                    "tier_name": app_tier,
-                    "api_key": guardian_token # Send their EXISTING token
+                    "user_name": payload.get('from_name'), "tier_name": app_tier, "api_key": guardian_token
                 }
             )
         else:
-            logging.info(f"Processed renewal for existing guardian {guardian_id} ({email}).")
+            logging.info(f"Processed renewal for existing guardian {guardian_id}.")
             
     else:
-        # --- SCENARIO: NEW GUARDIAN ---
-        logging.info(f"Subscription from a new email ({email}). Creating new guardian.")
+        # --- NEW GUARDIAN ---
+        logging.info(f"Creating new guardian for {email}.")
         _create_new_guardian(payload, app_tier, email_service)
 
 
 def _create_new_guardian(payload, app_tier, email_service):
     """Internal function to create a new guardian and send the welcome email."""
     db = get_db()
-    email = payload['email']
-    new_id = generate_guardian_id(db)
-    new_token = generate_api_token()
+    email, new_id, new_token = payload['email'], generate_guardian_id(db), generate_api_token()
     
     guardian_data = {
         'id': new_id, 'name': payload.get('from_name'), 'email': email, 'tier': app_tier,
         'token': new_token, 'joined_at': datetime.now(), 'last_paid_at': datetime.now()
     }
-
     db.execute(
         """
         INSERT INTO guardians (id, name, email, tier, token, joined_at, last_paid_at)
         VALUES (:id, :name, :email, :tier, :token, :joined_at, :last_paid_at)
-        """,
-        guardian_data
+        """, guardian_data
     )
     db.commit()
     logging.info(f"Created new guardian: {new_id} ({email}) with tier '{app_tier}'")
 
-    # Send the welcome email
     email_service.send_email(
-        to_email=email,
-        subject="Welcome to the Shiosayi Community!",
+        to_email=email, subject="Welcome to the Shiosayi Community!",
         template_name="guardian_welcome_email",
-        template_data={
-            "user_name": guardian_data['name'],
-            "tier_name": app_tier,
-            "api_key": new_token # Send the NEWLY created token
-        }
+        template_data={"user_name": guardian_data['name'], "tier_name": app_tier, "api_key": new_token}
     )
 
 

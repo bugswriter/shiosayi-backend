@@ -1,33 +1,22 @@
 # app.py
-
 import os
 import logging
-import json  # <-- Import the json library
+import json
 from flask import Flask, request, jsonify, abort, send_from_directory, current_app
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
 load_dotenv()
-
-# Import logic from service layer and db functions
 import services
 import database
 
-# Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 app = Flask(__name__)
 
-# Load config from .env, with a fallback
 app.config['DATABASE'] = os.getenv("DATABASE_FILENAME", "shiosayi.db")
-
-# Register database commands (init-db)
 database.init_app(app)
 
-# Load secrets from environment
 KOFI_TOKEN = os.getenv("KOFI_VERIFICATION_TOKEN")
 ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
-
 
 # ====================================================================
 # API ROUTES
@@ -47,14 +36,22 @@ def kofi_webhook():
     if data.get("verification_token") != KOFI_TOKEN:
         abort(403)
         
+    # --- Step 1: Log EVERY valid event first ---
+    # This now safely handles retries thanks to "INSERT OR IGNORE" in services.py
     services.log_kofi_event(data)
 
-    # --- SIMPLIFIED AND CORRECTED LOGIC ---
-    if data.get("type") == "Subscription" and data.get("is_subscription_payment") is True:
-        logging.info(f"Processing subscription payment for {data.get('email')}")
+    # --- Step 2: Check if this is a membership-related payment ---
+    # This is the crucial new logic. We only care if it's a subscription
+    # payment AND it is tied to a specific membership tier.
+    if (data.get("type") == "Subscription" and
+        data.get("is_subscription_payment") is True and
+        data.get("tier_name") is not None):
+        
+        logging.info(f"Processing MEMBERSHIP payment for tier '{data.get('tier_name')}' from {data.get('email')}")
         services.process_subscription_payment(data)
     else:
-        logging.info(f"Ignoring non-subscription Ko-fi event of type '{data.get('type')}'")
+        # This will now correctly ignore simple Donations and non-tiered Subscriptions.
+        logging.info(f"Ignoring non-membership event (type: '{data.get('type')}', tier: {data.get('tier_name')}). No action taken.")
 
     return jsonify({"message": "Webhook received successfully."}), 200
 
