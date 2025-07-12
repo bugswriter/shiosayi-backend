@@ -299,3 +299,32 @@ def generate_public_database(main_db_path, public_db_path="public.db"):
             main_db.close()
         if public_db:
             public_db.close()
+
+
+def add_suggestion(email, title, notes=None):
+    """
+    Inserts a new film suggestion into the database.
+
+    Args:
+        email (str): The email of the person suggesting the film.
+        title (str): The title of the suggested film.
+        notes (str, optional): Any additional notes from the suggester.
+
+    Returns:
+        dict: A dictionary representing the newly created suggestion row.
+    """
+    db = get_db()
+    cursor = db.execute(
+        "INSERT INTO suggestions (email, title, notes) VALUES (?, ?, ?)",
+        (email, title, notes)
+    )
+    db.commit()
+    
+    new_suggestion_id = cursor.lastrowid
+    
+    # Fetch the newly created suggestion to return it in the API response
+    new_suggestion_cursor = db.execute("SELECT * FROM suggestions WHERE id = ?", (new_suggestion_id,))
+    created_suggestion = dict(new_suggestion_cursor.fetchone())
+    
+    logging.info(f"New suggestion added: ID {new_suggestion_id} for title '{title}' by {email}.")
+    return created_suggestion

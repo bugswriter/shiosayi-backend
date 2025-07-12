@@ -161,5 +161,35 @@ def adopt_film_route(film_id):
 
     return jsonify(response_data), status_code
 
+
+@app.route('/suggest', methods=['POST'])
+def create_suggestion():
+    """
+    Public endpoint for users to suggest a new film.
+    Accepts a JSON payload.
+    """
+    if not request.is_json:
+        return jsonify({"error": "Request body must be JSON."}), 415
+
+    data = request.get_json()
+    email = data.get('email')
+    title = data.get('title')
+
+    # Basic validation
+    if not email or not title:
+        return jsonify({"error": "The 'email' and 'title' fields are required."}), 400
+    
+    notes = data.get('notes') # This is optional
+
+    try:
+        new_suggestion = services.add_suggestion(email, title, notes)
+        return jsonify({
+            "message": "Suggestion received successfully.",
+            "suggestion": new_suggestion
+        }), 201 # 201 Created is the appropriate status code
+    except Exception as e:
+        logging.error(f"Could not add suggestion: {e}")
+        return jsonify({"error": "An internal error occurred."}), 500
+
 if __name__ == '__main__':
     app.run(debug=False, port=5050)
