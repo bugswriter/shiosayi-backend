@@ -1,130 +1,92 @@
 # Shiosayi Backend
 
-This is the Flask-based backend for the Shiosayi project. It manages a database of films, guardians (supporters), and suggestions, and handles interactions with external services like Ko-fi and Resend for email.
+This is the Flask-based backend for the Shiosayi film preservation project. It manages a database of films and their guardians, handles Ko-fi webhooks for memberships, and provides a public API for client applications.
 
-## Features
+## Core Features
 
--   **Guardian Management**: Automatically creates "Guardian" accounts for new Ko-fi subscribers.
--   **Tier-Based Permissions**: Guardians have different abilities based on their subscription tier (`lover`, `keeper`, `savior`).
--   **Film Adoption**: Guardians can "adopt" orphan films, becoming their official keeper.
--   **Ko-fi Webhook Integration**: Listens for webhooks from Ko-fi to process new subscriptions.
--   **Film Suggestions**: A public API endpoint for anyone to suggest new films.
--   **Secure API**: Access to protected resources is controlled via unique API tokens.
--   **Public Database Publishing**: An admin-only route to generate and publish a sanitized, public-facing version of the database for frontend clients.
+-   **Guardian Management**: Automatically handles new memberships and tier upgrades from Ko-fi.
+-   **Tier-Based Permissions**: Guardians can adopt films based on their `lover`, `keeper`, or `savior` tier.
+-   **Automated Housekeeping**: A robust system for managing lapsed subscriptions.
+-   **Offline-First API**: Provides a downloadable public database for fast, efficient client applications.
+-   **Secure Endpoints**: Protected actions are secured via Guardian and Admin API tokens.
 
-## Prerequisites
+---
 
--   Python 3.10+
--   `pip` and `venv` (usually included with Python)
--   `sqlite3` command-line tool (for seeding the database)
--   `curl` and `jq` (for running the test script)
+## Quickstart
 
-## Installation
+### 1. Prerequisites
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <your-repository-url>
-    cd shiosayi-backend
-    ```
+-   Python 3.9+
+-   `pip` and `venv`
+-   `sqlite3` command-line tool
 
-2.  **Create and activate a virtual environment:**
-    ```bash
-    python -m venv env
-    source env/bin/activate
-    # On Windows, use: env\Scripts\activate
-    ```
+### 2. Installation
 
-3.  **Install the required Python packages:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+# Clone the repository
+git clone <your-repository-url>
+cd shiosayi-backend
 
-## Configuration
+# Create and activate a virtual environment
+python -m venv env
+source env/bin/activate
+# On Windows: env\Scripts\activate
 
-The application is configured using a `.env` file in the root directory. Create this file and add the following variables.
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 3. Configuration
+
+Create a `.env` file in the project root by copying `.env.example` (or creating it from scratch). Fill in the required values:
 
 ```ini
 # .env
-
-# Ko-fi webhook verification token
-KOFI_VERIFICATION_TOKEN="your_kofi_verification_token_here"
-
-# Resend API key for sending emails
-RESEND_API_KEY="re_your_resend_api_key_here"
-
-# Filename for the SQLite database
+KOFI_VERIFICATION_TOKEN="your_kofi_verification_token"
+RESEND_API_KEY="re_your_resend_api_key"
 DATABASE_FILENAME="shiosayi.db"
-
-# Admin token for triggering privileged actions
-ADMIN_API_TOKEN="shio_admin_some_very_secret_token"
-
-# Set to "true" to disable sending emails, useful for testing
+ADMIN_API_TOKEN="a_strong_secret_token_for_admin_actions"
+BASE_URL="http://127.0.0.1:5001"
 TEST_MODE="true"
+TEST_EMAIL_RECIPIENT="delivered@resend.dev"
 ```
 
-## Database Setup
-
-1.  **Initialize the Database Schema:**
-    This command creates the database file (e.g., `shiosayi.db`) and all the necessary tables.
-    ```bash
-    flask --app app init-db
-    ```
-
-2.  **Seed the Database with Dummy Data (Optional):**
-    The `seed.sql` file contains sample data for guardians and films to get you started.
-    ```bash
-    sqlite3 shiosayi.db < seed.sql
-    ```
-
-## Running the Application
-
-To run the local development server:
+### 4. Database Setup
 
 ```bash
-# Set TEST_MODE=true to prevent sending real emails during development
-export TEST_MODE=true
+# Create the database schema
+flask --app app init-db
 
-# Run the Flask development server
+# (Optional) Seed the database with sample data
+sqlite3 shiosayi.db < seed.sql
+```
+
+### 5. Running the Server
+
+```bash
+# Run the local development server
 flask --app app run --port 5001
 ```
 
-The application will be available at `http://127.0.0.1:5001`.
+The application will be running at `http://127.0.0.1:5001`.
 
-## API Endpoints
+---
 
-| Method | Endpoint                    | Authentication | Description                                             |
-| :----- | :-------------------------- | :------------- | :------------------------------------------------------ |
-| `POST` | `/suggest`                  | Public         | Suggest a new film to be added.                         |
-| `POST` | `/webhook`                  | Ko-fi Token    | Listens for webhooks from Ko-fi (for internal use).     |
-| `GET`  | `/auth`                     | Guardian Token | Get a guardian's profile and their adopted films.       |
-| `GET`  | `/magnet/<film_id>`         | Guardian Token | Get the magnet link for a specific film.                |
-| `POST` | `/adopt/<film_id>`          | Guardian Token | Adopt an orphan or abandoned film.                      |
-| `GET`  | `/db/public`                | Public         | Download the sanitized, public version of the database. |
-| `POST` | `/admin/publish`            | Admin Token    | **[ADMIN]** Generate and publish the public database.     |
-| `GET`  | `/health`                   | Public         | Health check endpoint for monitoring.                   |
+## Documentation
 
-### Authentication Types
+For detailed information on how to use the system, please refer to the documentation pages:
 
--   **Public**: No authentication required.
--   **Guardian Token**: Requires `?TOKEN=<guardian_api_token>` in the URL query string.
--   **Admin Token**: Requires an `Authorization: Bearer <admin_api_token>` header.
--   **Ko-fi Token**: Validated internally from the webhook payload.
+-   **[Public API Documentation](./api_docs.html)**: A guide for developers building client applications (desktop, CLI, etc.). It explains the offline-first approach and details all public endpoints.
 
-## Running Tests
+-   **[Internal System Documentation](./internal_docs.html)**: A comprehensive guide for backend developers and system administrators. It covers the architecture, database schema, core logic, and administrative tasks.
 
-A test script (`test.sh`) is provided to verify the core API functionality. It requires the server to be running.
+## Testing
 
-1.  **Terminal 1: Start the Server**
+The project includes an interactive test suite to validate the entire user lifecycle.
+
+1.  **Start the server** in one terminal (`flask --app app run`).
+2.  **Run the test flow script** in a second terminal:
     ```bash
-    export TEST_MODE=true
-    flask --app app run --port 5001
+    python run_test_flow.py
     ```
-
-2.  **Terminal 2: Run the Test Script**
-    ```bash
-    # Make sure the script is executable
-    chmod +x test.sh
-
-    # Run the tests
-    ./test.sh
-    ```
+    The script will guide you through each test case interactively.
