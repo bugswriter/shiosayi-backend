@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shiosayi API Documentation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #fdfdfd;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        header {
+            text-align: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+        h1 { color: #1a1a1a; }
+        h2 { border-bottom: 1px solid #eaeaea; padding-bottom: 0.5rem; margin-top: 2.5rem; color: #333; }
+        h3 { margin-top: 2rem; color: #444; }
+        code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+            background-color: #f0f0f0;
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        pre {
+            background-color: #2d2d2d;
+            color: #f1f1f1;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        pre code { background-color: transparent; padding: 0; }
+        .endpoint {
+            background-color: #fff;
+            border: 1px solid #eaeaea;
+            border-radius: 8px;
+            padding: 1rem 1.5rem;
+            margin-top: 1rem;
+        }
+        .method {
+            font-weight: bold;
+            border-radius: 3px;
+            padding: 3px 8px;
+            margin-right: 10px;
+            color: #fff;
+            font-size: 0.9em;
+        }
+        .get { background-color: #0c82e2; }
+        .post { background-color: #1a9e5a; }
+        .note {
+            background-color: #e8f0fe;
+            border-left: 4px solid #007bff;
+            padding: 1rem;
+            margin: 1.5rem 0;
+            border-radius: 0 4px 4px 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid #eaeaea;
+        }
+        th { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Shiosayi API Documentation</h1>
+            <p>Your guide to building clients for the Shiosayi film preservation archive.</p>
+        </header>
+
+        <main>
+            <section id="getting-started">
+                <h2>Getting Started: The Offline-First Approach</h2>
+                <p>Welcome, developer! The Shiosayi API is designed to be fast, efficient, and friendly for client applications. To achieve this, we use an "offline-first" architecture.</p>
+                <div class="note">
+                    <p><strong>The Core Idea:</strong> Instead of making constant API calls to browse the film catalog, your application should download a public database file. This makes your app incredibly fast and reduces server load.</p>
+                </div>
+                <h3>Your Development Workflow</h3>
+                <ol>
+                    <li><strong>Download the Public Database:</strong> Fetch the sanitized SQLite database from the public endpoint. This file contains the full film and guardian catalog.</li>
+                    <li><strong>Use it Locally:</strong> Your application should use this local database to power its user interface—displaying film lists, plots, posters, and who has adopted what.</li>
+                    <li><strong>Use the API for Actions:</strong> Only use the live API for actions that require authentication or change data, such as authenticating a user, adopting a film, or getting a private magnet link.</li>
+                </ol>
+            </section>
+
+            <section id="database">
+                <h2>The Public Database</h2>
+                <p>This is the heart of your client application's browsing experience.</p>
+                <div class="endpoint">
+                    <p><span class="method get">GET</span> <strong>/db/public</strong></p>
+                    <p><strong>Description:</strong> Downloads the latest version of the public SQLite database.</p>
+                    <pre><code>curl -o shiosayi_public.db https://sys.shiosayi.org/db/public</code></pre>
+                    <p>This database contains two main tables: <code>films</code> and <code>guardians</code>, with all sensitive information (emails, tokens, magnet links) removed.</p>
+                </div>
+            </section>
+
+            <section id="authentication">
+                <h2>Authentication</h2>
+                <p>All protected endpoints require a Guardian's API token. A user receives their token via email after becoming a member on Ko-fi.</p>
+                <p>The token must be passed as a URL query parameter named <code>TOKEN</code> (for adoption and magnet links) or <code>token</code> (for auth).</p>
+            </section>
+
+            <section id="endpoints">
+                <h2>API Endpoints</h2>
+
+                <article id="auth">
+                    <h3>Guardian Authentication</h3>
+                    <div class="endpoint">
+                        <p><span class="method get">GET</span> <strong>/auth</strong></p>
+                        <p><strong>Description:</strong> Validates a token and returns the guardian's profile, including their tier and a list of films they have adopted.</p>
+                        <p><strong>URL:</strong> <code>https://sys.shiosayi.org/auth?token=YOUR_API_TOKEN</code></p>
+                        
+                        <h4>✅ Success Response (200 OK)</h4>
+                        <pre><code>{
+  "email": "guardian@example.com",
+  "films": [
+    {
+      "id": 7,
+      "plot": "A prince embroiled in a struggle...",
+      "poster_url": "https://...",
+      "region": "Japan",
+      "title": "Princess Mononoke",
+      "year": 1997
+    }
+  ],
+  "name": "Jo Example",
+  "tier": "lover"
+}</code></pre>
+                        <h4>❌ Error Response (401 Unauthorized)</h4>
+                        <pre><code>{ "error": "Invalid API token." }</code></pre>
+                    </div>
+                </article>
+
+                <article id="adopt">
+                    <h3>Adopt a Film</h3>
+                    <div class="endpoint">
+                        <p><span class="method post">POST</span> <strong>/adopt/<film_id></strong></p>
+                        <p><strong>Description:</strong> Allows an authenticated guardian to adopt an orphan or abandoned film, up to their tier limit.</p>
+                        <p><strong>URL:</strong> <code>https://sys.shiosayi.org/adopt/7?TOKEN=YOUR_API_TOKEN</code></p>
+                        <h4>✅ Success Response (200 OK)</h4>
+                        <pre><code>{
+  "message": "Film successfully adopted!",
+  "film_title": "Princess Mononoke"
+}</code></pre>
+                        <h4>❌ Error Response (403 Forbidden - Tier Limit)</h4>
+                        <pre><code>{
+  "error": "Adoption limit reached. Your tier 'lover' allows for 1 adoptions."
+}</code></pre>
+                    </div>
+                </article>
+
+                 <article id="magnet">
+                    <h3>Get Magnet Link</h3>
+                    <div class="endpoint">
+                        <p><span class="method get">GET</span> <strong>/magnet/<film_id></strong></p>
+                        <p><strong>Description:</strong> Retrieves the private magnet link for a specific film. Requires a valid token.</p>
+                        <p><strong>URL:</strong> <code>https://sys.shiosayi.org/magnet/7?TOKEN=YOUR_API_TOKEN</code></p>
+                        <h4>✅ Success Response (200 OK)</h4>
+                        <pre><code>{
+  "film_id": 7,
+  "magnet": "magnet:?xt=urn:btih:mononokehash"
+}</code></pre>
+                        <h4>❌ Error Response (404 Not Found)</h4>
+                        <pre><code>{ "error": "Film not found or has no magnet link." }</code></pre>
+                    </div>
+                </article>
+
+                <article id="suggest">
+                    <h3>Suggest a Film</h3>
+                    <div class="endpoint">
+                        <p><span class="method post">POST</span> <strong>/suggest</strong></p>
+                        <p><strong>Description:</strong> A public endpoint for anyone to suggest a new film to be added to the archive.</p>
+                        <p><strong>URL:</strong> <code>https://sys.shiosayi.org/suggest</code></p>
+                        <h4>Request Body (JSON)</h4>
+                        <table>
+                            <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+                            <tbody>
+                                <tr><td><code>email</code></td><td>string</td><td>Yes</td><td>The email address of the suggester.</td></tr>
+                                <tr><td><code>title</code></td><td>string</td><td>Yes</td><td>The title of the film.</td></tr>
+                                <tr><td><code>notes</code></td><td>string</td><td>No</td><td>Optional message or notes.</td></tr>
+                            </tbody>
+                        </table>
+                        <h4>✅ Success Response (201 Created)</h4>
+                        <pre><code>{
+  "message": "Suggestion received successfully.",
+  "suggestion": {
+    "id": 1,
+    "email": "user@example.com",
+    "title": "A Silent Voice",
+    "notes": "A beautiful film.",
+    "status": "pending",
+    "suggested_at": "..."
+  }
+}</code></pre>
+                    </div>
+                </article>
+            </section>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shiosayi Backend - Internal Documentation</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #333; background-color: #fdfdfd; margin: 0; padding: 0; }
+        .container { max-width: 900px; margin: 2rem auto; padding: 0 2rem; }
+        header { text-align: center; border-bottom: 1px solid #eee; padding-bottom: 1rem; margin-bottom: 2rem; }
+        nav { background-color: #f9f9f9; padding: 1rem; border-radius: 8px; margin-bottom: 2rem; }
+        nav ul { list-style: none; padding: 0; text-align: center; }
+        nav ul li { display: inline-block; margin: 0 15px; }
+        nav a { text-decoration: none; color: #007bff; font-weight: 500; }
+        h1, h2, h3 { color: #1a1a1a; }
+        h2 { border-bottom: 1px solid #eaeaea; padding-bottom: 0.5rem; margin-top: 2.5rem; }
+        code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; background-color: #f0f0f0; padding: 0.2em 0.4em; border-radius: 4px; font-size: 0.9em; }
+        pre { background-color: #2d2d2d; color: #f1f1f1; padding: 1.5rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }
+        pre code { background-color: transparent; color: #f1f1f1; padding: 0; } /* Fix for code inside pre */
+        .warning { background-color: #fffbe6; border-left: 4px solid #ffc107; padding: 1rem; margin: 1.5rem 0; border-radius: 0 4px 4px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #eaeaea; }
+        th { background-color: #f9f9f9; }
+        .mermaid { text-align: center; margin-top: 1.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Shiosayi Backend: Internal System Documentation</h1>
+            <p>A comprehensive guide for developers and system administrators.</p>
+        </header>
+
+        <nav>
+            <ul>
+                <li><a href="#setup">Setup</a></li>
+                <li><a href="#config">Configuration</a></li>
+                <li><a href="#database">Database</a></li>
+                <li><a href="#logic">Core Logic</a></li>
+                <li><a href="#testing">Testing</a></li>
+                <li><a href="#admin">Admin Tasks</a></li>
+            </ul>
+        </nav>
+
+        <main>
+            <section id="setup">
+                <h2>Project Setup & Installation</h2>
+                <ol>
+                    <li><strong>Clone Repository:</strong> Get the source code.</li>
+                    <li><strong>Create Virtual Environment:</strong> <code>python -m venv env</code></li>
+                    <li><strong>Activate Environment:</strong> <code>source env/bin/activate</code></li>
+                    <li><strong>Install Dependencies:</strong> <code>pip install -r requirements.txt</code></li>
+                </ol>
+            </section>
+
+            <section id="config">
+                <h2>Configuration (.env file)</h2>
+                <p>The application is configured via environment variables in a <code>.env</code> file. The following variables are required:</p>
+                <table>
+                    <thead><tr><th>Variable</th><th>Description</th></tr></thead>
+                    <tbody>
+                        <tr><td><code>KOFI_VERIFICATION_TOKEN</code></td><td>The secret token from your Ko-fi webhook settings.</td></tr>
+                        <tr><td><code>RESEND_API_KEY</code></td><td>Your API key from Resend.com for sending emails.</td></tr>
+                        <tr><td><code>DATABASE_FILENAME</code></td><td>The filename for the main SQLite database (e.g., <code>shiosayi.db</code>).</td></tr>
+                        <tr><td><code>ADMIN_API_TOKEN</code></td><td>A secret bearer token for protected admin endpoints.</td></tr>
+                        <tr><td><code>BASE_URL</code></td><td>The base URL of the deployed application (e.g., <code>https://sys.shiosayi.org</code>), used by test scripts.</td></tr>
+                        <tr><td><code>TEST_MODE</code></td><td>Set to <code>true</code> to disable sending real emails.</td></tr>
+                        <tr><td><code>TEST_EMAIL_RECIPIENT</code></td><td>When <code>TEST_MODE</code> is true, all emails are redirected to this address.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="database">
+                <h2>Database Schema & Management</h2>
+                <h3>Entity Relationship Diagram</h3>
+                <p>The database consists of four main tables. The relationship between <code>guardians</code> and <code>films</code> is the most critical one for the application's core logic.</p>
+                
+                <!-- Mermaid.js Diagram -->
+                <div class="mermaid">
+                    erDiagram
+                
+                    guardians {
+                      TEXT id PK
+                      TEXT name
+                      TEXT email UNIQUE
+                      TEXT tier
+                      TEXT token UNIQUE
+                      DATETIME joined_at
+                      DATETIME last_paid_at
+                    }
+                
+                    films {
+                      INTEGER id PK
+                      TEXT title
+                      INTEGER year
+                      TEXT plot
+                      TEXT poster_url
+                      TEXT region
+                      TEXT guardian_id FK
+                      TEXT status
+                      TEXT magnet
+                      DATETIME updated_at
+                    }
+                
+                    suggestions {
+                      INTEGER id PK
+                      TEXT email
+                      TEXT title
+                      TEXT notes
+                      TEXT status
+                      DATETIME suggested_at
+                    }
+                
+                    kofi_events {
+                      TEXT id PK
+                      DATETIME timestamp
+                      TEXT type
+                      BOOLEAN is_public
+                      TEXT from_name
+                      TEXT email
+                      TEXT message
+                      REAL amount
+                      TEXT currency
+                      TEXT url
+                      BOOLEAN is_subscription_payment
+                      BOOLEAN is_first_subscription_payment
+                      TEXT tier_name
+                      TEXT kofi_transaction_id
+                      TEXT raw_payload
+                    }
+                
+                    guardians ||--o{ films : "adopts"
+                </div>
+                <!-- End of Mermaid Diagram -->
+
+                <h3>Initialization & Seeding</h3>
+                <ul>
+                    <li><strong>Initialize Schema:</strong> Run <code>flask --app app init-db</code> to create the tables from <code>schema.sql</code>.</li>
+                    <li><strong>Seed with Dummy Data:</strong> Run <code>sqlite3 shiosayi.db < seed.sql</code> to populate the database for testing.</li>
+                </ul>
+            </section>
+
+            <section id="logic">
+                <h2>Core System Logic</h2>
+                <h3>Ko-fi Webhook Processing</h3>
+                <p>The <code>/webhook</code> endpoint is the main entry point for all data from Ko-fi.</p>
+                <div class="warning">
+                    <strong>Important:</strong> Only subscription payments that include a non-null <code>tier_name</code> are treated as "membership" events. All other events (donations, non-tiered subscriptions) are logged but do not create or modify Guardian accounts.
+                </div>
+                <p>The <code>process_subscription_payment</code> service function handles all logic:</p>
+                <ul>
+                    <li><strong>New Member:</strong> If the email is new, a guardian is created, a token is generated, and a welcome email is sent.</li>
+                    <li><strong>Renewal/Upgrade:</strong> If the email exists, their <code>last_paid_at</code> date is updated. If the `tier_name` in the payload is different from their current tier, they are upgraded, and a confirmation email is sent with their existing token.</li>
+                </ul>
+
+                <h3>Subscription Cancellation (Housekeeping)</h3>
+                <p>Since Ko-fi does not provide a cancellation webhook, we use a more robust "last seen" approach.</p>
+                <ol>
+                    <li>The <code>/admin/housekeeping</code> endpoint is designed to be called periodically (e.g., via a daily cron job).</li>
+                    <li>It finds all guardians whose <code>last_paid_at</code> date is older than 35 days.</li>
+                    <li>For each lapsed guardian, it:
+                        <ul>
+                            <li>Appends their record to <code>ex_guardians.csv</code> for archival.</li>
+                            <li>Sets the status of their adopted films to <code>abandoned</code>.</li>
+                            <li>Deletes the guardian record from the database.</li>
+                        </ul>
+                    </li>
+                </ol>
+            </section>
+
+            <section id="testing">
+                <h2>Running & Testing the Backend</h2>
+                <h3>Running the Development Server</h3>
+                <pre><code># Set TEST_MODE to true to avoid sending real emails
+export TEST_MODE=true
+
+# Run the server
+flask --app app run --port 5001</code></pre>
+
+                <h3>Test Scripts</h3>
+                <p>Two Python scripts in the root directory are used for testing:</p>
+                <ul>
+                    <li><code><strong>fake-kofi-event.py</strong></code>: A simple utility to send a single, customized webhook event. Useful for one-off tests.</li>
+                    <li><code><strong>run_test_flow.py</strong></code>: A fully interactive, step-by-step test suite that covers the entire user lifecycle from creation to upgrade to cancellation. This is the primary tool for integration testing. It prompts for user input (like film IDs) and generates `curl` commands for each API call to aid in debugging.</li>
+                </ul>
+            </section>
+
+            <section id="admin">
+                <h2>Administrative Tasks</h2>
+                <p>Most admin tasks are performed manually or via protected API endpoints.</p>
+                <ul>
+                    <li><strong>Adding/Updating Films:</strong> Done via direct SQL queries or a database GUI. There is no admin API for this to keep the project lightweight.</li>
+                    <li><strong>Publishing Public DB:</strong> Call <code>POST /admin/publish</code> with the admin bearer token to generate a new <code>public.db</code> file for clients.</li>
+                    <li><strong>Cleaning Lapsed Users:</strong> Call <code>POST /admin/housekeeping</code> with the admin bearer token. This should be automated with a cron job.</li>
+                </ul>
+            </section>
+        </main>
+    </div>
+
+    <!-- Add Mermaid.js script -->
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true });
+    </script>
+</body>
+</html>
