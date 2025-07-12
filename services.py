@@ -94,7 +94,7 @@ def process_new_subscription(payload):
     db.commit()
     logging.info(f"Created new guardian: {new_id} ({email}) with tier '{app_tier}'")
 
-	try:
+    try:
         email_service = EmailService()
         email_service.send_email(
             to_email=email, # Pass the REAL user email
