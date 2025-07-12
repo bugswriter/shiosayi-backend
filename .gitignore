@@ -7,4 +7,5 @@ config.yaml
 port_scanner.log
 processed_uids.txt
 *.log
-portfolio.txt
+run.sh
+kofi_webhooks.db

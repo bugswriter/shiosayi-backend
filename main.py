@@ -1,9 +1,10 @@
 import os
 import json
+import sqlite3
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-from urllib.parse import parse_qs # Import parse_qs
+from urllib.parse import parse_qs
 
 load_dotenv()
 
@@ -11,9 +12,38 @@ app = Flask(__name__)
 CORS(app)
 
 KOFI_VERIFICATION_TOKEN = os.getenv("KOFI_VERIFICATION_TOKEN")
+DATABASE = 'kofi_webhooks.db' # SQLite database file
 
 if not KOFI_VERIFICATION_TOKEN:
     print("WARNING: KOFI_VERIFICATION_TOKEN not set in environment variables. Webhook verification will fail.")
+
+def init_db():
+    conn = sqlite3.connect(DATABASE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS webhooks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT UNIQUE,
+            timestamp TEXT,
+            type TEXT,
+            is_public INTEGER,
+            from_name TEXT,
+            message TEXT,
+            amount TEXT,
+            currency TEXT,
+            url TEXT,
+            email TEXT,
+            is_subscription_payment INTEGER,
+            is_first_subscription_payment INTEGER,
+            kofi_transaction_id TEXT,
+            shop_items TEXT, -- Stored as JSON string
+            tier_name TEXT,
+            shipping TEXT, -- Stored as JSON string
+            received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 @app.route('/webhook', methods=['POST'])
 def kofi_webhook():
@@ -21,16 +51,13 @@ def kofi_webhook():
     content_type = request.headers.get('Content-Type', '')
 
     if 'application/json' in content_type:
-        # Try to parse as direct JSON
         data = request.get_json(silent=True)
     elif 'application/x-www-form-urlencoded' in content_type:
-        # Ko-fi sends JSON as a URL-encoded 'data' parameter
         raw_body = request.get_data(as_text=True)
         if raw_body.startswith('data='):
             try:
-                # Parse the raw body as a query string to extract the 'data' parameter
                 parsed_qs = parse_qs(raw_body)
-                raw_json_string = parsed_qs.get('data', [''])[0] # Get the first value of 'data'
+                raw_json_string = parsed_qs.get('data', [''])[0]
 
                 if raw_json_string:
                     data = json.loads(raw_json_string)
@@ -44,7 +71,6 @@ def kofi_webhook():
         else:
             print("ERROR: Form-urlencoded request received, but body does not start with 'data='.")
     else:
-        # Fallback for other content types or if it's empty
         raw_data = request.get_data(as_text=True)
         if raw_data:
             try:
@@ -55,9 +81,8 @@ def kofi_webhook():
         else:
             print(f"ERROR: Request received with Content-Type: {content_type} and no data.")
 
-
     if data is None:
-        final_raw_data = request.get_data(as_text=True) # Get raw data again for final error message
+        final_raw_data = request.get_data(as_text=True)
         print(f"ERROR: Webhook received non-JSON or unparseable data.")
         print(f"Final Content-Type: {content_type}")
         print(f"Final Raw data received: '{final_raw_data}'")
@@ -79,11 +104,52 @@ def kofi_webhook():
     print(f"Is Public: {data.get('is_public')}")
     print(f"Ko-fi Transaction ID: {data.get('kofi_transaction_id')}")
 
+    # --- Store data in SQLite ---
+    try:
+        conn = sqlite3.connect(DATABASE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR IGNORE INTO webhooks (
+                message_id, timestamp, type, is_public, from_name, message,
+                amount, currency, url, email, is_subscription_payment,
+                is_first_subscription_payment, kofi_transaction_id,
+                shop_items, tier_name, shipping
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            data.get('message_id'),
+            data.get('timestamp'),
+            data.get('type'),
+            int(data.get('is_public', False)), # Convert boolean to int (0 or 1)
+            data.get('from_name'),
+            data.get('message'),
+            data.get('amount'),
+            data.get('currency'),
+            data.get('url'),
+            data.get('email'),
+            int(data.get('is_subscription_payment', False)),
+            int(data.get('is_first_subscription_payment', False)),
+            data.get('kofi_transaction_id'),
+            json.dumps(data.get('shop_items')) if data.get('shop_items') is not None else None, # Store as JSON string
+            data.get('tier_name'),
+            json.dumps(data.get('shipping')) if data.get('shipping') is not None else None # Store as JSON string
+        ))
+        conn.commit()
+        conn.close()
+        print("INFO: Webhook data successfully stored in SQLite database.")
+    except sqlite3.IntegrityError:
+        print(f"WARNING: Duplicate message_id '{data.get('message_id')}' received. Data not inserted.")
+    except Exception as e:
+        print(f"ERROR: Failed to store webhook data in database: {e}")
+        # You might want to return a 500 error here if database storage is critical
+        # return jsonify({"status": "error", "message": "Failed to store data"}), 500
+
     return jsonify({"status": "success", "message": "Webhook received and processed"}), 200
 
 if __name__ == '__main__':
+    init_db() # Initialize the database when the app starts
     print("Flask server starting...")
     print("Listening on http://127.0.0.1:5050/")
     print("Webhook endpoint: /webhook")
     print(f"Ko-fi Verification Token (from .env): {KOFI_VERIFICATION_TOKEN}")
     app.run(host='127.0.0.1', port=5050, debug=True)
+
