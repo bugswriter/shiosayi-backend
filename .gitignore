@@ -9,3 +9,5 @@ processed_uids.txt
 *.log
 run.sh
 kofi_webhooks.db
+*.db
+*.bak
