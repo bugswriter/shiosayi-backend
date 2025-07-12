@@ -13,6 +13,13 @@ from mail import EmailService
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Tier definitions for adoption limits
+TIER_LIMITS = {
+    'lover': 1,
+    'keeper': 5,
+    'savior': 10
+}
+
+# Tier definitions for adoption limits
 TIER_MAP = {
     "lover": "lover",
     "keeper": "keeper",
