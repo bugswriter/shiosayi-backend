@@ -162,4 +162,4 @@ def adopt_film_route(film_id):
     return jsonify(response_data), status_code
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    app.run(debug=False, port=5050)
