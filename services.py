@@ -94,24 +94,19 @@ def process_new_subscription(payload):
     db.commit()
     logging.info(f"Created new guardian: {new_id} ({email}) with tier '{app_tier}'")
 
-    # --- Conditionally Send Email ---
-    # Check if we are NOT in test mode before sending an email
-    if os.getenv("TEST_MODE") != "true":
-        try:
-            email_service = EmailService()
-            email_service.send_email(
-                to_email=email,
-                subject="Welcome to Shiosayi! Here is your API Key",
-                template_name="api_key_email",
-                template_data={
-                    "user_name": guardian_data['name'],
-                    "api_key": guardian_data['token']
-                }
-            )
-        except Exception as e:
-            logging.error(f"Failed to send welcome email to {email}: {e}")
-    else:
-        logging.info("TEST_MODE is active. Skipping email.")
+	try:
+        email_service = EmailService()
+        email_service.send_email(
+            to_email=email, # Pass the REAL user email
+            subject="Welcome to Shiosayi! Here is your API Key",
+            template_name="api_key_email",
+            template_data={
+                "user_name": guardian_data['name'],
+                "api_key": guardian_data['token']
+            }
+        )
+    except Exception as e:
+        logging.error(f"Failed to trigger email service for {email}: {e}")
 
     return guardian_data
 
