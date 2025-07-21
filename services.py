@@ -3,6 +3,7 @@ import os
 import logging
 import sqlite3
 import csv
+import hashlib
 from datetime import datetime, timedelta
 
 from database import get_db
@@ -338,15 +339,16 @@ def generate_public_database(main_db_path, public_db_path="public.db"):
 
     - Backs up the old public DB with a timestamp if it exists.
     - Creates a new public DB file.
-    - Copies the 'guardians' table but EXCLUDES the 'email' and 'token' columns.
-    - Copies the 'films' table but EXCLUDES the 'magnet' column.
+    - Copies the 'guardians' table (excluding sensitive fields).
+    - Copies the 'films' table (excluding magnet link).
+    - Generates SHA256 checksum file: public.db.sha256
 
     Args:
-        main_db_path (str): The path to the main private database.
-        public_db_path (str): The filename for the public database to be created.
+        main_db_path (str): Path to the main private database.
+        public_db_path (str): Filename for the public database to create.
 
     Returns:
-        dict: A result dictionary indicating success or failure.
+        dict: Result dictionary indicating success or failure.
     """
     if os.path.exists(public_db_path):
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -361,12 +363,15 @@ def generate_public_database(main_db_path, public_db_path="public.db"):
     main_db = None
     public_db = None
     try:
+        # Open main DB in read-only mode
         main_db = sqlite3.connect(f"file:{main_db_path}?mode=ro", uri=True)
         main_db.row_factory = sqlite3.Row
         public_db = sqlite3.connect(public_db_path)
+
         main_cursor = main_db.cursor()
         public_cursor = public_db.cursor()
 
+        # === Guardians Table ===
         public_cursor.execute("""
         CREATE TABLE guardians (
             id TEXT PRIMARY KEY,
@@ -382,7 +387,8 @@ def generate_public_database(main_db_path, public_db_path="public.db"):
                 "INSERT INTO guardians (id, name, tier, joined_at) VALUES (?, ?, ?, ?)",
                 guardians_to_copy
             )
-        
+
+        # === Films Table ===
         public_cursor.execute("""
         CREATE TABLE films (
             id INTEGER PRIMARY KEY,
@@ -396,17 +402,34 @@ def generate_public_database(main_db_path, public_db_path="public.db"):
             updated_at DATETIME
         );
         """)
-        main_cursor.execute("SELECT id, title, year, plot, poster_url, region, guardian_id, status, updated_at FROM films")
+        main_cursor.execute("""
+            SELECT id, title, year, plot, poster_url, region, guardian_id, status, updated_at 
+            FROM films
+        """)
         films_to_copy = main_cursor.fetchall()
         if films_to_copy:
             public_cursor.executemany(
-                """INSERT INTO films (id, title, year, plot, poster_url, region, guardian_id, status, updated_at)
+                """INSERT INTO films 
+                   (id, title, year, plot, poster_url, region, guardian_id, status, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 films_to_copy
             )
-        
+
+        # Commit public DB
         public_db.commit()
         logging.info(f"Successfully created public database '{public_db_path}'.")
+
+        # === SHA256 Checksum ===
+        sha256_path = public_db_path + ".sha256"
+        try:
+            with open(public_db_path, "rb") as f:
+                sha256 = hashlib.sha256(f.read()).hexdigest()
+            with open(sha256_path, "w") as f:
+                f.write(sha256 + "\n")
+            logging.info(f"Checksum written to '{sha256_path}'")
+        except Exception as e:
+            logging.warning(f"Failed to generate SHA256 file: {e}")
+
         return {
             "status": "success",
             "message": f"Public database '{public_db_path}' created successfully.",
@@ -415,8 +438,9 @@ def generate_public_database(main_db_path, public_db_path="public.db"):
         }
 
     except sqlite3.Error as e:
-        logging.error(f"An SQLite error occurred during public database generation: {e}")
+        logging.error(f"SQLite error during public DB generation: {e}")
         return {"status": "error", "message": str(e)}
+
     finally:
         if main_db:
             main_db.close()

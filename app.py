@@ -186,6 +186,21 @@ def publish_database():
         return jsonify(result), 500
 
 
+@app.route('/db/public.sha256')
+def get_public_db_checksum():
+    """
+    Publicly accessible SHA256 checksum for the public.db file.
+    """
+    sha256_path = os.path.join(os.path.dirname(__file__), 'public.db.sha256')
+
+    if not os.path.exists(sha256_path):
+        return jsonify({"error": "Checksum file not found."}), 404
+
+    with open(sha256_path, "r") as f:
+        checksum = f.read().strip()
+    return checksum + "\n"
+
+
 @app.route('/health')
 def health_check():
     """
