@@ -4,10 +4,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 config.yaml
-port_scanner.log
-processed_uids.txt
 *.log
 run.sh
 kofi_webhooks.db
 *.db
 *.bak
+*sha256
+*.csv
