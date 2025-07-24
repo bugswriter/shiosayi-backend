@@ -33,13 +33,12 @@ def generate_guardian_id(db):
     new_num = last_num + 1
     return f"g{new_num:03d}"
 
-def process_and_save_poster(file_storage, film_slug):
+def process_and_save_poster(file_storage):
     """
     Validates, resizes, and saves an uploaded film poster.
     
     Args:
         file_storage: The FileStorage object from Flask's request.files.
-        film_slug: A URL-safe identifier for the film, used for logging/association (but not for the filename).
 
     Returns:
         A dictionary with the result:
@@ -91,5 +90,5 @@ def process_and_save_poster(file_storage, film_slug):
     except UnidentifiedImageError:
         return {'success': False, 'error': 'Cannot identify image file. It may be corrupt or not a valid image.'}
     except Exception as e:
-        logging.error(f"Error processing poster for '{film_slug}': {e}")
+        logging.error(f"Error processing poster for '{filename}': {e}")
         return {'success': False, 'error': 'An unexpected error occurred during image processing.'}

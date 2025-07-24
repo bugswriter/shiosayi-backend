@@ -312,11 +312,7 @@ def upload_poster_route():
         return jsonify({"error": "Missing 'poster' file in the request."}), 400
     
     file = request.files['poster']
-    film_slug = request.form.get('film_slug')
 
-    if not film_slug:
-        return jsonify({"error": "Missing 'film_slug' form field in the request."}), 400
-        
     if file.filename == '':
         return jsonify({"error": "No file selected."}), 400
 
