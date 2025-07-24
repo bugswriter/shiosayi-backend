@@ -2,3 +2,4 @@ Flask
 python-dotenv
 resend
 faker
+requests
