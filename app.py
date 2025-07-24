@@ -18,6 +18,7 @@ database.init_app(app)
 
 KOFI_TOKEN = os.getenv("KOFI_VERIFICATION_TOKEN")
 ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
+JOIN_FORM_ACCESS = os.getenv("JOIN_FORM_ACCESS")
 
 def check_admin_access():
     if JOIN_FORM_ACCESS == "admin":
