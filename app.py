@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import services
 import database
+import utils
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 app = Flask(__name__)
@@ -288,6 +289,52 @@ def get_public_db_checksum():
     return checksum + "\n"
 
 
+
+@app.route('/admin/upload-poster', methods=['POST'])
+def upload_poster_route():
+    """
+    Protected admin route to upload a new film poster.
+    Expects a multipart/form-data request with:
+    - A 'poster' file (JPEG, < 1MB, ~2:3 ratio)
+    - A 'film_slug' text field (e.g., 'blade-runner-2049')
+    """
+    # 1. --- Authentication ---
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return jsonify({"error": "Authorization header is missing or malformed."}), 401
+    
+    token = auth_header.split(' ')[1]
+    if not ADMIN_API_TOKEN or token != ADMIN_API_TOKEN:
+        return jsonify({"error": "Invalid or missing admin token."}), 403
+
+    # 2. --- Input Validation ---
+    if 'poster' not in request.files:
+        return jsonify({"error": "Missing 'poster' file in the request."}), 400
+    
+    file = request.files['poster']
+    film_slug = request.form.get('film_slug')
+
+    if not film_slug:
+        return jsonify({"error": "Missing 'film_slug' form field in the request."}), 400
+        
+    if file.filename == '':
+        return jsonify({"error": "No file selected."}), 400
+
+    # 3. --- Process and Save ---
+    # Delegate all the hard work to the service layer
+    result = utils.process_and_save_poster(file, film_slug)
+
+    # 4. --- Respond to Client ---
+    if result['success']:
+        # HTTP 201 Created is appropriate for a successful resource creation
+        return jsonify({
+            "message": "Poster uploaded and processed successfully.",
+            "url": result['url']
+        }), 201
+    else:
+        return jsonify({"error": result['error']}), 400
+
+
 @app.route('/health')
 def health_check():
     """
@@ -295,6 +342,5 @@ def health_check():
     """
     return jsonify({"status": "ok"}), 200
 
-
-if __name__ == '__main__':
-    app.run(debug=False, port=5050)
+# if __name__ == '__main__':
+#    app.run(debug=False, port=5050)
