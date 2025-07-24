@@ -318,7 +318,7 @@ def upload_poster_route():
 
     # 3. --- Process and Save ---
     # Delegate all the hard work to the service layer
-    result = utils.process_and_save_poster(file, film_slug)
+    result = utils.process_and_save_poster(file)
 
     # 4. --- Respond to Client ---
     if result['success']:
