@@ -1,9 +1,7 @@
-# app.py
 import os
 import logging
 import json
 import uuid
-import requests
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, abort, render_template, flash, redirect, url_for
 from dotenv import load_dotenv
@@ -15,22 +13,101 @@ import database
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 app = Flask(__name__)
 
+# --- CONFIGURATION ---
 app.config['DATABASE'] = os.getenv("DATABASE_FILENAME", "shiosayi.db")
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY') # Will be checked below
 database.init_app(app)
 
+# --- LOAD SECRETS AND SETTINGS ---
 KOFI_TOKEN = os.getenv("KOFI_VERIFICATION_TOKEN")
 ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
-JOIN_FORM_ACCESS = os.getenv("JOIN_FORM_ACCESS")
+JOIN_FORM_ACCESS = os.getenv("JOIN_FORM_ACCESS", "admin")
 
-def check_admin_access():
-    if JOIN_FORM_ACCESS == "admin":
+# ====================================================================
+# NEW: STARTUP SANITY CHECKS
+# This prevents the app from running without critical secrets.
+# ====================================================================
+if not app.config['SECRET_KEY']:
+    raise RuntimeError("FATAL: FLASK_SECRET_KEY is not set in the environment.")
+if not KOFI_TOKEN:
+    raise RuntimeError("FATAL: KOFI_VERIFICATION_TOKEN is not set in the environment.")
+if JOIN_FORM_ACCESS == "admin" and not ADMIN_API_TOKEN:
+    raise RuntimeError("FATAL: JOIN_FORM_ACCESS is 'admin' but ADMIN_API_TOKEN is not set.")
+
+# ====================================================================
+# INTERNAL JOIN FORM
+# ====================================================================
+
+def check_admin_access(access_mode, required_token):
+    """Helper function to check for admin access."""
+    if access_mode == "admin":
         token = request.form.get('admin_token') or request.args.get('token')
-        if token != ADMIN_API_TOKEN:
-            abort(403) # Forbidden
+        if not token or token != required_token:
+            abort(403)
 
 # ====================================================================
 # API ROUTES
 # ====================================================================
+
+@app.route('/join', methods=['GET', 'POST'])
+def join_form():
+    """
+    Renders a form and handles submission by internally calling the /webhook
+    endpoint logic using Flask's test client for robustness.
+    """
+    check_admin_access(JOIN_FORM_ACCESS, ADMIN_API_TOKEN)
+
+    if request.method == 'POST':
+        email = request.form.get('email')
+        name = request.form.get('name')
+
+        if not email or not name:
+            flash('Both name and email are required.', 'error')
+            return redirect(url_for('join_form'))
+
+        fake_payload = {
+            "verification_token": KOFI_TOKEN,
+            "message_id": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "type": "Subscription",
+            "from_name": name,
+            "message": "Manual join from internal form.",
+            "amount": "3.00",
+            "url": "#",
+            "email": email,
+            "currency": "USD",
+            "is_subscription_payment": True,
+            "is_first_subscription_payment": True,
+            "kofi_transaction_id": f"form_generated_{str(uuid.uuid4())}",
+            "tier_name": "lover",
+        }
+
+        try:
+            # --- NEW: Use Flask's test_client for a robust internal call ---
+            # This avoids network issues, redirects, and reverse proxy problems.
+            with app.test_client() as client:
+                logging.info(f"Internal form: dispatching fake event to /webhook for {email}")
+                # We simulate the exact data format Ko-fi sends
+                response = client.post('/webhook', data={'data': json.dumps(fake_payload)})
+
+                # Check the status code from our own /webhook endpoint
+                if response.status_code != 200:
+                    # If our webhook logic failed, raise an error to be caught below
+                    raise Exception(f"Internal webhook call failed with status {response.status_code}. Response: {response.get_data(as_text=True)}")
+
+            # --- UPDATED SUCCESS MESSAGE ---
+            flash(f"Success! Guardian '{name}' has been added. Please check your email for a welcome message.", 'success')
+
+        except Exception as e:
+            logging.error(f"Internal form: failed to process event for {email}. Error: {e}")
+            # --- UPDATED ERROR MESSAGE ---
+            flash("An error occurred while adding the guardian. The event could not be processed. Please check the server logs for details.", 'error')
+
+        redirect_url = url_for('join_form', token=request.form.get('admin_token'))
+        return redirect(redirect_url)
+
+    return render_template('join.html', admin_token=request.args.get('token'))
+
 
 @app.route('/webhook', methods=['POST'])
 def kofi_webhook():
@@ -64,68 +141,6 @@ def kofi_webhook():
         logging.info(f"Ignoring non-membership event (type: '{data.get('type')}', tier: {data.get('tier_name')}). No action taken.")
 
     return jsonify({"message": "Webhook received successfully."}), 200
-
-
-@app.route('/join', methods=['GET', 'POST'])
-def join_form():
-    """
-    Renders a form and handles its submission by making a server-to-server
-    request to the /webhook endpoint, simulating a real Ko-fi event.
-    Access is controlled by the JOIN_FORM_ACCESS environment variable.
-    """
-    check_admin_access() # Protect the route if in 'admin' mode
-
-    if request.method == 'POST':
-        email = request.form.get('email')
-        name = request.form.get('name')
-
-        if not email or not name:
-            flash('Both name and email are required.', 'error')
-            return redirect(url_for('join_form'))
-
-        fake_payload = {
-            "verification_token": KOFI_TOKEN, # This is the "key" to our own webhook
-            "message_id": str(uuid.uuid4()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "type": "Subscription",
-            "is_public": False,
-            "from_name": name,
-            "message": "Manual join from internal form.",
-            "amount": "3.00",
-            "url": "#",
-            "email": email,
-            "currency": "USD",
-            "is_subscription_payment": True,
-            "is_first_subscription_payment": True,
-            # This marker helps you identify form-generated users in your DB
-            "kofi_transaction_id": f"form_generated_{str(uuid.uuid4())}",
-            "tier_name": "lover", # Hardcoded to 'lover'
-            "shipping": None
-        }
-
-        try:
-            # Step 2: Make the server-to-server POST request to the /webhook.
-            # This re-uses the exact same logic as a real Ko-fi event.
-            webhook_url = url_for('kofi_webhook', _external=True)
-            # Ko-fi sends data as a form field containing a JSON string.
-            form_data = {'data': json.dumps(fake_payload)}
-            
-            logging.info(f"Internal form: sending fake event to {webhook_url} for {email}")
-            response = requests.post(webhook_url, data=form_data, timeout=10)
-
-            # Step 3: Check the response from our own webhook.
-            response.raise_for_status() # Raises an exception for 4xx or 5xx status codes
-
-            flash(f"Success! Guardian '{name}' ({email}) has been added.", 'success')
-
-        except requests.exceptions.RequestException as e:
-            logging.error(f"Internal form: failed to call /webhook endpoint: {e}")
-            flash(f"An error occurred: {e}", 'error')
-
-        redirect_url = url_for('join_form', token=request.form.get('admin_token'))
-        return redirect(redirect_url)
-
-    return render_template('join.html', admin_token=request.args.get('token'))
 
 
 @app.route('/admin/housekeeping', methods=['POST'])
