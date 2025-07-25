@@ -78,8 +78,8 @@ def _create_new_guardian(payload, app_tier, email_service):
         'email': email,
         'tier': app_tier,
         'token': new_token,
-        'joined_at': datetime.now(),
-        'last_paid_at': datetime.now()
+        'joined_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        'last_paid_at': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
 
     cursor = db.execute(
