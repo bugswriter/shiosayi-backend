@@ -6,7 +6,7 @@ import string
 from PIL import Image, UnidentifiedImageError
 from werkzeug.utils import secure_filename
 
-POSTER_UPLOAD_PATH = os.getenv("POSTER_UPLOAD_PATH")
+CDN_STORAGE_PATH = os.getenv("CDN_STORAGE_PATH")
 CDN_BASE_URL = os.getenv("CDN_BASE_URL")
 TARGET_WIDTH = 350
 TARGET_ASPECT_RATIO = 2 / 3
@@ -32,14 +32,17 @@ def process_and_save_poster(file_storage):
         {'success': True, 'url': '...', 'path': '...'} or
         {'success': False, 'error': '...'}
     """
-    if not POSTER_UPLOAD_PATH or not CDN_BASE_URL:
-        return {'success': False, 'error': 'Server configuration error: Upload path or CDN URL is not set.'}
+    if not CDN_STORAGE_PATH or not CDN_BASE_URL:
+        return {'success': False, 'error': 'Server configuration error: CDN_STORAGE_PATH or CDN_BASE_URL is not set.'}
 
     filename = f"{uuid.uuid4().hex}.jpg"
     
-    save_path = os.path.join(POSTER_UPLOAD_PATH, filename)
+    posters_dir = os.path.join(CDN_STORAGE_PATH, 'posters')
+    save_path = os.path.join(posters_dir, filename)
 
+    filename = f"{uuid.uuid4().hex}.jpg"
     file_storage.seek(0, os.SEEK_END)
+
     file_size = file_storage.tell()
     if file_size > MAX_FILE_SIZE_BYTES:
         return {'success': False, 'error': f'File is too large. Maximum size is {MAX_FILE_SIZE_BYTES / 1024 / 1024} MB.'}
@@ -58,8 +61,7 @@ def process_and_save_poster(file_storage):
 
         new_height = int(TARGET_WIDTH / actual_ratio)
         resized_img = img.resize((TARGET_WIDTH, new_height), Image.Resampling.LANCZOS)
-
-        os.makedirs(POSTER_UPLOAD_PATH, exist_ok=True)
+        os.makedirs(posters_dir, exist_ok=True)
         resized_img.save(save_path, 'JPEG', quality=85, optimize=True)
         
         final_url = f"{CDN_BASE_URL}/posters/{filename}"

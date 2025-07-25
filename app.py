@@ -21,6 +21,7 @@ database.init_app(app)
 KOFI_TOKEN = os.getenv("KOFI_VERIFICATION_TOKEN")
 ADMIN_API_TOKEN = os.getenv("ADMIN_API_TOKEN")
 JOIN_FORM_ACCESS = os.getenv("JOIN_FORM_ACCESS", "admin")
+CDN_STORAGE_PATH = os.getenv("CDN_STORAGE_PATH")
 
 if not app.config['SECRET_KEY']:
     raise RuntimeError("FATAL: FLASK_SECRET_KEY is not set in the environment.")
@@ -184,7 +185,7 @@ def adopt_film_route(film_id):
 
 @app.route('/db/public')
 def download_public_db():
-    directory = os.path.dirname(os.path.abspath(__file__))
+    directory = os.path.join(CDN_STORAGE_PATH, "db")
     filename = "public.db"
     
     try:
@@ -203,7 +204,13 @@ def publish_database():
         return jsonify({"error": "Invalid or missing admin token."}), 403
 
     main_db_path = current_app.config['DATABASE']
-    result = services.generate_public_database(main_db_path, "public.db")
+    
+    db_dir = os.path.join(CDN_STORAGE_PATH, "db")
+    public_db_full_path = os.path.join(db_dir, "public.db")
+    
+    os.makedirs(db_dir, exist_ok=True)
+    
+    result = services.generate_public_database(main_db_path, public_db_full_path)
 
     if result['status'] == 'success':
         return jsonify(result), 200
@@ -212,7 +219,7 @@ def publish_database():
 
 @app.route('/db/public.sha256')
 def get_public_db_checksum():
-    sha256_path = os.path.join(os.path.dirname(__file__), 'public.db.sha256')
+    sha256_path = os.path.join(CDN_STORAGE_PATH, 'db', 'public.db.sha256')
 
     if not os.path.exists(sha256_path):
         return jsonify({"error": "Checksum file not found."}), 404
