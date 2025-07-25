@@ -188,18 +188,19 @@ def create_suggestion():
 @app.route('/auth')
 def authenticate_guardian():
     """
-    Validates a token and returns the guardian's profile and adopted films.
+    Validates a token and returns the guardian's core profile.
     """
     token = request.args.get('token')
     if not token:
         return jsonify({"error": "API token is required."}), 401
     
-    guardian_details = services.authenticate_and_get_details(token)
+    # Use the new, simpler service function
+    guardian_profile = services.get_guardian_profile_by_token(token)
     
-    if not guardian_details:
+    if not guardian_profile:
         return jsonify({"error": "Invalid API token."}), 401
         
-    return jsonify(guardian_details), 200
+    return jsonify(guardian_profile), 200
 
 
 @app.route('/magnet/<int:film_id>')

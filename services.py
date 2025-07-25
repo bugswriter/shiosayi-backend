@@ -264,7 +264,6 @@ def get_film_magnet(film_id):
     film = cursor.fetchone()
     return film['magnet'] if film and film['magnet'] else None
 
-
 def adopt_film(guardian, film_id):
     """
     Logic for a guardian to adopt a film.
@@ -305,34 +304,25 @@ def adopt_film(guardian, film_id):
     
     return {"message": "Film successfully adopted!", "film_title": film['title']}, 200
 
-
-def authenticate_and_get_details(token):
+def get_guardian_profile_by_token(token):
     """
-    Validates a token and returns guardian details along with their adopted films.
+    Validates a token and returns the guardian's core profile details.
+    This does NOT include their adopted films or the API token itself.
     """
     guardian = get_guardian_by_token(token)
     if not guardian:
-        return None # Token is invalid or not found
+        return None  # Token is invalid or not found
 
-    db = get_db()
-    cursor = db.execute(
-        "SELECT id, title, year, plot, poster_url, region FROM films WHERE guardian_id = ? AND status = 'adopted'",
-        (guardian['id'],)
-    )
-    adopted_films_rows = cursor.fetchall()
-    
-    adopted_films = [dict(row) for row in adopted_films_rows]
-    
-    guardian_details = {
+    # Construct a dictionary with only the desired public-facing guardian info
+    guardian_profile = {
+        "id": guardian['id'],
         "name": guardian['name'],
         "email": guardian['email'],
-        "tier": guardian['tier'],
-        "films": adopted_films
+        "tier": guardian['tier']
     }
+
+    return guardian_profile
     
-    return guardian_details
-
-
 def generate_public_database(main_db_path, public_db_path="public.db"):
     """
     Creates a public-facing, sanitized version of the database.
