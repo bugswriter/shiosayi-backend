@@ -2,7 +2,7 @@
 -- Table: guardians
 -- =============================
 CREATE TABLE guardians (
-    id TEXT PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,                          -- optional display name
     email TEXT UNIQUE NOT NULL,         -- for contact + matching
     tier TEXT NOT NULL,                 -- lover, keeper, savior
