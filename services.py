@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from database import get_db
 from utils import generate_api_token, generate_guardian_id
 from mail import EmailService
+from flask import current_app
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
