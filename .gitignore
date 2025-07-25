@@ -11,3 +11,4 @@ kofi_webhooks.db
 *.bak
 *sha256
 *.csv
+*-journal
