@@ -4,7 +4,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from flask import Flask, request, jsonify, abort, render_template, flash, redirect, url_for
-from flask import current_app
+from flask import current_app, send_from_directory
 from dotenv import load_dotenv
 
 load_dotenv()
