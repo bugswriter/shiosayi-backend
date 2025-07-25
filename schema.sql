@@ -1,5 +1,5 @@
 CREATE TABLE guardians (
-    id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     email TEXT UNIQUE NOT NULL,
     tier TEXT NOT NULL,
