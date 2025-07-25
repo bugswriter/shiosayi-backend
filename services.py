@@ -7,7 +7,7 @@ import hashlib
 from datetime import datetime, timedelta
 
 from database import get_db
-from utils import generate_api_token, generate_guardian_id
+from utils import generate_api_token
 from mail import EmailService
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -89,25 +89,37 @@ def process_subscription_payment(payload):
 def _create_new_guardian(payload, app_tier, email_service):
     """Internal function to create a new guardian and send the welcome email."""
     db = get_db()
-    email, new_id, new_token = payload['email'], generate_guardian_id(db), generate_api_token()
-    
+    email, new_token = payload['email'], generate_api_token()
+
     guardian_data = {
-        'id': new_id, 'name': payload.get('from_name'), 'email': email, 'tier': app_tier,
-        'token': new_token, 'joined_at': datetime.now(), 'last_paid_at': datetime.now()
+        'name': payload.get('from_name'),
+        'email': email,
+        'tier': app_tier,
+        'token': new_token,
+        'joined_at': datetime.now(),
+        'last_paid_at': datetime.now()
     }
+
     db.execute(
         """
-        INSERT INTO guardians (id, name, email, tier, token, joined_at, last_paid_at)
-        VALUES (:id, :name, :email, :tier, :token, :joined_at, :last_paid_at)
+        INSERT INTO guardians (name, email, tier, token, joined_at, last_paid_at)
+        VALUES (:name, :email, :tier, :token, :joined_at, :last_paid_at)
         """, guardian_data
     )
     db.commit()
+
+    # Fetch the last inserted guardian ID
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
     logging.info(f"Created new guardian: {new_id} ({email}) with tier '{app_tier}'")
 
     email_service.send_email(
         to_email=email, subject="Welcome to the Shiosayi Community!",
         template_name="guardian_welcome_email",
-        template_data={"user_name": guardian_data['name'], "tier_name": app_tier, "api_key": new_token}
+        template_data={
+            "user_name": guardian_data['name'],
+            "tier_name": app_tier,
+            "api_key": new_token
+        }
     )
 
 
