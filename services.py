@@ -50,7 +50,7 @@ def process_subscription_payment(payload):
 
     if guardian:
         current_tier, guardian_id, guardian_token = guardian['tier'], guardian['id'], guardian['token']
-        db.execute("UPDATE guardians SET last_paid_at = ?, tier = ? WHERE id = ?", (datetime.now(), app_tier, guardian_id))
+        db.execute("UPDATE guardians SET last_paid_at = ?, tier = ? WHERE id = ?", (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), app_tier, guardian_id))
         db.commit()
 
         if app_tier != current_tier:
