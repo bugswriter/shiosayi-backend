@@ -1,19 +1,13 @@
--- =============================
--- Table: guardians
--- =============================
 CREATE TABLE guardians (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,                          -- optional display name
-    email TEXT UNIQUE NOT NULL,         -- for contact + matching
-    tier TEXT NOT NULL,                 -- lover, keeper, savior
-    token TEXT UNIQUE NOT NULL,         -- access token / API key
-    joined_at DATETIME NOT NULL,        -- date of registration
-    last_paid_at DATETIME               -- date of last subscription payment
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    email TEXT UNIQUE NOT NULL,
+    tier TEXT NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    joined_at DATETIME NOT NULL,
+    last_paid_at DATETIME
 );
 
--- =============================
--- Table: films
--- =============================
 CREATE TABLE films (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     title TEXT NOT NULL,
@@ -21,30 +15,24 @@ CREATE TABLE films (
     plot TEXT,
     poster_url TEXT,
     region TEXT,
-    guardian_id TEXT,                   -- links to guardians.id (nullable)
-    status TEXT CHECK (status IN ('orphan', 'adopted', 'abandoned')) NOT NULL DEFAULT 'orphan',
+    guardian_id TEXT,
+    status TEXT CHECK (status IN ('orphan', 'adopted')) NOT NULL DEFAULT 'orphan',
     magnet TEXT,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- =============================
--- Table: suggestions
--- =============================
 CREATE TABLE suggestions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL,               -- person suggesting
-    title TEXT NOT NULL,               -- suggested film
-    notes TEXT,                        -- optional message
+    email TEXT NOT NULL,
+    title TEXT NOT NULL,
+    notes TEXT,
     status TEXT CHECK (status IN ('pending', 'added', 'ignored')) DEFAULT 'pending',
     suggested_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- =============================
--- Table: kofi_events
--- =============================
 CREATE TABLE kofi_events (
-    id TEXT PRIMARY KEY,                       -- message_id from Ko-fi
-    timestamp DATETIME NOT NULL,               -- time of event
+    id TEXT PRIMARY KEY,
+    timestamp DATETIME NOT NULL,
     type TEXT CHECK (type IN ('Donation', 'Subscription')) NOT NULL,
     is_public BOOLEAN,
     from_name TEXT,
@@ -57,5 +45,5 @@ CREATE TABLE kofi_events (
     is_first_subscription_payment BOOLEAN,
     tier_name TEXT,
     kofi_transaction_id TEXT,
-    raw_payload TEXT                            -- optional: store full JSON
+    raw_payload TEXT
 );
