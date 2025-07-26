@@ -177,7 +177,7 @@ def adopt_film(guardian, film_id):
 
     db.execute(
         "UPDATE films SET guardian_id = ?, status = 'adopted', updated_at = ? WHERE id = ?",
-        (guardian_id, datetime.now(), film_id)
+        (guardian_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), film_id)
     )
     db.commit()
     logging.info(f"Guardian {guardian_id} adopted film {film_id}.")
