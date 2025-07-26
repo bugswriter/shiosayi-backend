@@ -145,11 +145,23 @@ def get_guardian_by_token(token):
     cursor = db.execute("SELECT * FROM guardians WHERE token = ?", (token,))
     return cursor.fetchone()
 
+      
 def get_film_magnet(film_id):
     db = get_db()
-    cursor = db.execute("SELECT magnet FROM films WHERE id = ?", (film_id,))
+    cursor = db.execute("SELECT status, magnet FROM films WHERE id = ?", (film_id,))
     film = cursor.fetchone()
-    return film['magnet'] if film and film['magnet'] else None
+
+    if not film:
+        return ":( Film not found."
+
+    if film['status'] == 'orphan':
+        return ":( No magnet for orphan films."
+
+    if film['magnet']:
+        return film['magnet']
+    else:
+        return ":( No magnet link found for this film."
+    
 
 def adopt_film(guardian, film_id):
     db = get_db()
@@ -164,16 +176,16 @@ def adopt_film(guardian, film_id):
     
     if film['status'] == 'adopted':
         if film['guardian_id'] == guardian_id:
-            return {"message": "You have already adopted this film."}, 200
+            return {"message": "You have already requested this film."}, 200
         else:
-            return {"error": "This film is already adopted by another guardian."}, 409
+            return {"error": "This film is already requested by another guardian."}, 409
 
     limit = TIER_LIMITS.get(guardian_tier, 0)
     cursor = db.execute("SELECT COUNT(id) FROM films WHERE guardian_id = ? AND status = 'adopted'", (guardian_id,))
     current_adoptions = cursor.fetchone()[0]
 
     if current_adoptions >= limit:
-        return {"error": f"Adoption limit reached. Your tier '{guardian_tier}' allows for {limit} adoptions."}, 403
+        return {"error": f"Too many requests! A '{guardian_tier}' can adopted only {limit} films."}, 403
 
     db.execute(
         "UPDATE films SET guardian_id = ?, status = 'adopted', updated_at = ? WHERE id = ?",
@@ -182,7 +194,7 @@ def adopt_film(guardian, film_id):
     db.commit()
     logging.info(f"Guardian {guardian_id} adopted film {film_id}.")
     
-    return {"message": "Film successfully adopted!", "film_title": film['title']}, 200
+    return {"message": "Adoption request sent!", "film_title": film['title']}, 200
 
 def get_guardian_profile_by_token(token):
     guardian = get_guardian_by_token(token)
