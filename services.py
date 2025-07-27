@@ -178,7 +178,7 @@ def adopt_film(guardian, film_id):
         if film['guardian_id'] == guardian_id:
             return {"message": "You have already requested this film."}, 200
         else:
-            return {"error": "This film is already requested by another guardian."}, 409
+            return {"error": "This film already have requests."}, 409
 
     limit = TIER_LIMITS.get(guardian_tier, 0)
     cursor = db.execute("SELECT COUNT(id) FROM films WHERE guardian_id = ? AND status = 'adopted'", (guardian_id,))
